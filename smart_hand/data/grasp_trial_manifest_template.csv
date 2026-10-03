@@ -1,0 +1,1 @@
+session_id,trial_id,start_time_iso8601,operator,test_type,object_class,object_mass_g,object_size_mm,grip_intent,expected_state,final_label,aborted,abort_reason,calibration_version,firmware_hash,policy_version,driver_name,driver_version,supply_voltage_v,current_limit_a,mechanical_revision,notes

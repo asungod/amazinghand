@@ -1,0 +1,1 @@
+calibration_version,servo_role,servo_id,bus_name,baud_rate,direction_sign,center_raw,soft_min_raw,soft_max_raw,max_step_raw,speed_limit_raw,position_unit_status,position_scale,position_unit,load_unit_status,load_scale,load_unit,driver_name,driver_version,verified_by,verified_at,notes

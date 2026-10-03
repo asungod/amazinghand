@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Hand 双边缘演示面板</title>
+<style>
+:root{color-scheme:dark;--bg:#07111f;--panel:#101d2f;--line:#263951;--text:#edf4ff;--muted:#9fb0c7;--blue:#43a5ff;--green:#44d19d;--amber:#ffbd55;--red:#ff6b72}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0,#122b47 0,var(--bg) 42%);color:var(--text);font-family:"Microsoft YaHei",system-ui,sans-serif}
+main{max-width:1220px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.title h1{font-size:25px;margin:0 0 6px;font-weight:600}.title p{margin:0;color:var(--muted)}
+.mode{border:1px solid var(--amber);color:var(--amber);padding:7px 11px;border-radius:99px;font-size:13px;white-space:nowrap}.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+.stage{position:relative;background:linear-gradient(145deg,#13243a,var(--panel));border:1px solid var(--line);border-radius:15px;padding:16px;min-height:175px}.stage:not(:last-child):after{content:"→";position:absolute;right:-13px;top:73px;color:var(--blue);z-index:2;font-size:21px}
+.stage h2{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 15px;font-weight:500}.value{font-size:24px;font-weight:600;margin:5px 0}.sub{color:var(--muted);font-size:13px;line-height:1.65}.ok{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}
+.bar{height:6px;border-radius:5px;background:#1e3045;margin:10px 0}.bar i{display:block;height:100%;width:0;background:var(--green);border-radius:5px;transition:width .35s}
+.lower{display:grid;grid-template-columns:1.35fr .65fr;gap:14px}.panel{background:rgba(16,29,47,.88);border:1px solid var(--line);border-radius:15px;padding:16px}.panel h2{font-size:16px;margin:0 0 14px}
+.controls{display:flex;flex-wrap:wrap;gap:8px}.controls button{background:#172a41;color:var(--text);border:1px solid #35506c;border-radius:8px;padding:9px 12px;cursor:pointer}.controls button:hover,.controls button:focus{border-color:var(--blue)}button.primary{background:#17629d;border-color:#298be0}button.danger{border-color:#8c3d45;color:#ffb0b5}
+.auth{display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.switch{display:flex;align-items:center;gap:7px}.switch input{width:18px;height:18px}.notice{font-size:13px;color:var(--muted)}
+.log{height:207px;overflow:auto;background:#07111d;border:1px solid var(--line);border-radius:9px;padding:10px;font:12px/1.55 Consolas,monospace;color:#b9cae1}.metric{display:grid;grid-template-columns:1fr auto;gap:6px;border-bottom:1px solid var(--line);padding:9px 0}.metric:last-child{border:0}.metric span:first-child{color:var(--muted)}
+.footer{margin-top:14px;color:var(--muted);font-size:12px}.pulse{animation:pulse .55s ease}@keyframes pulse{50%{filter:brightness(1.6)}}
+@media(max-width:850px){.pipeline{grid-template-columns:1fr 1fr}.stage:nth-child(2):after{display:none}.lower{grid-template-columns:1fr}}@media(max-width:520px){main{padding:14px}.top{display:block}.mode{display:inline-block;margin-top:12px}.pipeline{grid-template-columns:1fr}.stage:after{display:none}.auth{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<main id="dashboard">
+  <div class="top">
+    <div class="title"><h1>Smart Hand · 双边缘智能抓握</h1><p>视觉感知 → 语义通信 → 实时安全决策 → 柔性执行</p></div>
+    <div class="mode" id="modeBadge">模拟 / 回放模式 · 不驱动舵机</div>
+  </div>
+
+  <section class="pipeline" aria-label="系统处理链路">
+    <article class="stage" id="aiStage"><h2>AI-1 · MAIXCAM2</h2><div class="value" id="objectName">等待目标</div><div class="sub">COCO ID <span id="classId">—</span><br>置信度 <span id="confidence">—</span><br>稳定帧 <span id="stableFrames">0 / 3</span></div><div class="bar"><i id="confidenceBar"></i></div></article>
+    <article class="stage" id="linkStage"><h2>SEMANTIC LINK · UART4↔UART2</h2><div class="value" id="linkState">ONLINE</div><div class="sub">VISION seq <span id="visionSeq">0</span><br>ACK RTT <span id="ackRtt">3 ms</span><br>CRC / 超时 <span id="linkErrors">0 / 0</span></div></article>
+    <article class="stage" id="decisionStage"><h2>TITAN · RULE/STATE-MACHINE MVP</h2><div class="value" id="gripIntent">NO_ACTION</div><div class="sub">安全门 <span id="safetyGate">DISARMED</span><br>目标年龄 <span id="targetAge">—</span><br>第二级 NPU <span class="warn">尚未部署</span></div></article>
+    <article class="stage" id="executionStage"><h2>AMAZINGHAND · EXECUTION</h2><div class="value" id="executionState">DISARMED</div><div class="sub">动作输出 <span id="motionOutput">禁止</span><br>反馈 <span id="feedbackState">等待实物</span><br>故障 <span id="faultState">NONE</span></div></article>
+  </section>
+
+  <section class="lower">
+    <div class="panel"><h2>演示场景</h2><div class="controls">
+      <button data-scenario="bottle">识别瓶子</button><button data-scenario="cup">识别杯子</button><button data-scenario="remote">识别遥控器</button><button data-scenario="release">模拟释放</button><button data-scenario="low">低置信度</button><button data-scenario="lost">目标消失</button><button data-scenario="offline" class="danger">UART断联</button><button data-scenario="jam" class="danger">受阻/过载</button><button data-scenario="reset">复位演示</button>
+    </div><div class="auth"><label class="switch"><input type="checkbox" id="armToggle"> Titan 显式授权（ARM）</label><button class="primary" id="executeButton">执行待定抓握</button><span class="notice">此按钮只改变屏幕状态，不连接串口或舵机。</span></div>
+    </div>
+    <div class="panel"><h2>运行摘要</h2><div class="metric"><span>接收有效目标</span><strong id="validTargets">0</strong></div><div class="metric"><span>拒绝动作</span><strong id="rejections">0</strong></div><div class="metric"><span>安全停止请求</span><strong id="safeStops">0</strong></div><div class="metric"><span>当前演示结论</span><strong id="demoResult">待机</strong></div></div>
+  </section>
+  <section class="panel" style="margin-top:14px"><h2>可审计事件流</h2><div class="log" id="eventLog" aria-live="polite"></div></section>
+  <div class="footer">当前界面是无硬件演示原型。真实串口、Titan动作层、SCS0009反馈和Titan NPU均未接入；不得用本页面宣称真机闭环已经完成。</div>
+</main>
+<script>
+(() => {
+  const objects={bottle:{name:'瓶子 / bottle',id:39,confidence:94,intent:'CYLINDRICAL_GRASP'},cup:{name:'杯子 / cup',id:41,confidence:91,intent:'POWER_GRASP'},remote:{name:'遥控器 / remote',id:65,confidence:89,intent:'PRECISION_GRASP'}};
+  let state={seq:0,target:null,online:true,armed:false,execution:'DISARMED',fault:'NONE',valid:0,rejections:0,stops:0};
+  const $=id=>document.getElementById(id); const stamp=()=>new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  function log(message,kind=''){const line=document.createElement('div');line.className=kind;line.textContent=`[${stamp()}] ${message}`;$('eventLog').prepend(line)}
+  function pulse(id){const el=$(id);el.classList.remove('pulse');void el.offsetWidth;el.classList.add('pulse')}
+  function render(){
+    $('linkState').textContent=state.online?'ONLINE':'OFFLINE';$('linkState').className='value '+(state.online?'ok':'bad');
+    $('visionSeq').textContent=state.seq;$('safetyGate').textContent=state.fault!=='NONE'?'FAULT':(state.armed?'ARMED':'DISARMED');
+    $('executionState').textContent=state.execution;$('faultState').textContent=state.fault;$('faultState').className=state.fault==='NONE'?'ok':'bad';
+    $('motionOutput').textContent=['CLOSING','HOLDING','RELEASING'].includes(state.execution)?'模拟中':'禁止';
+    $('validTargets').textContent=state.valid;$('rejections').textContent=state.rejections;$('safeStops').textContent=state.stops;
+    $('armToggle').checked=state.armed;$('gripIntent').textContent=state.target?state.target.intent:'NO_ACTION';
+    if(state.target){$('objectName').textContent=state.target.name;$('classId').textContent=state.target.id;$('confidence').textContent=state.target.confidence+'%';$('stableFrames').textContent='3 / 3';$('confidenceBar').style.width=state.target.confidence+'%';$('targetAge').textContent='fresh < 750 ms'}
+    else{$('objectName').textContent='等待目标';$('classId').textContent='—';$('confidence').textContent='—';$('stableFrames').textContent='0 / 3';$('confidenceBar').style.width='0';$('targetAge').textContent='—'}
+  }
+  function selectObject(key){if(!state.online){state.rejections++;$('demoResult').textContent='链路离线，拒绝目标';log('VISION rejected: link offline','bad');render();return}state.seq=(state.seq+1)&65535;state.target=objects[key];state.valid++;state.fault='NONE';$('demoResult').textContent='目标已稳定，等待授权';log(`VISION seq=${state.seq} class=${state.target.id} conf=${state.target.confidence} → ${state.target.intent}`,'ok');pulse('aiStage');pulse('linkStage');render()}
+  function scenario(name){
+    if(objects[name]){selectObject(name);return}
+    if(name==='low'){state.seq++;state.target=null;state.rejections++;$('demoResult').textContent='低置信度：NO_ACTION';log('VISION confidence=48 < 70 → NO_ACTION','warn')}
+    if(name==='lost'){state.target=null;state.rejections++;if(['CLOSING','HOLDING'].includes(state.execution)){state.execution='FAULT';state.fault='TARGET_STALE';state.armed=false;state.stops++} $('demoResult').textContent='目标过期，禁止新动作';log('target age > 750 ms → safe gate closed','warn')}
+    if(name==='offline'){state.online=false;state.target=null;if(['CLOSING','HOLDING','RELEASING'].includes(state.execution)){state.stops++}state.execution='FAULT';state.fault='LINK_OFFLINE';state.armed=false;state.rejections++;$('demoResult').textContent='断联降级';log('1500 ms without valid frame → OFFLINE / safe stop','bad');pulse('linkStage')}
+    if(name==='jam'){if(!['CLOSING','HOLDING'].includes(state.execution)){state.rejections++;$('demoResult').textContent='无活动动作，未注入故障';log('jam injection ignored: no active motion','warn')}else{state.execution='FAULT';state.fault='OVERLOAD_OR_JAM';state.armed=false;state.stops++;$('demoResult').textContent='故障锁存，需复位后重新授权';log('feedback anomaly → FAULT latched / safe stop','bad')}}
+    if(name==='release'){if(state.execution!=='HOLDING'){state.rejections++;$('demoResult').textContent='当前不在保持状态';log('release ignored: state is not HOLDING','warn')}else{state.execution='RELEASING';$('demoResult').textContent='模拟释放';log('operator release → RELEASING','ok');render();setTimeout(()=>{if(state.execution==='RELEASING'){state.execution=state.armed?'READY':'DISARMED';state.target=null;$('feedbackState').textContent='等待实物';$('demoResult').textContent='释放完成，等待新目标';log('simulated release complete; old target cleared','ok');render()}},500)}}
+    if(name==='reset'){state={seq:0,target:null,online:true,armed:false,execution:'DISARMED',fault:'NONE',valid:0,rejections:0,stops:0};$('feedbackState').textContent='等待实物';$('linkErrors').textContent='0 / 0';$('demoResult').textContent='已复位';$('eventLog').textContent='';log('demo reset; motion remains disabled')}
+    render()
+  }
+  document.querySelectorAll('[data-scenario]').forEach(button=>button.addEventListener('click',()=>scenario(button.dataset.scenario)));
+  $('armToggle').addEventListener('change',event=>{if(event.target.checked && state.online && state.fault==='NONE'){state.armed=true;state.execution='READY';log('operator ARM → READY','ok')}else{if(['CLOSING','HOLDING','RELEASING'].includes(state.execution)){state.stops++}state.armed=false;state.execution=state.fault==='NONE'?'DISARMED':'FAULT';log('operator DISARM → motion disabled','warn')}render()});
+  $('executeButton').addEventListener('click',()=>{if(!state.online||!state.armed||!state.target||state.fault!=='NONE'){state.rejections++;$('demoResult').textContent='安全门拒绝执行';log('grasp request rejected: link/arm/target/fault gate','warn');render();return}state.execution='CLOSING';$('demoResult').textContent='模拟闭合 → 保持';log(`execute ${state.target.intent}: CLOSING (screen simulation only)`,'ok');render();setTimeout(()=>{if(state.execution==='CLOSING'){state.execution='HOLDING';$('feedbackState').textContent='模拟 CONTACT_STABLE';$('demoResult').textContent='模拟抓握稳定';log('simulated feedback → CONTACT_STABLE / HOLDING','ok');render()}},650)});
+  log('dashboard ready in simulation/replay mode');render();
+})();
+</script>
+</body>
+</html>

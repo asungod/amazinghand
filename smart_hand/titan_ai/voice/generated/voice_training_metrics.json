@@ -1,0 +1,54 @@
+{
+  "corpus": "synthetic_deterministic_pipeline_selftest",
+  "corpus_kind": "synthetic_pipeline_selftest",
+  "is_real_corpus": false,
+  "labels": [
+    "开始训练",
+    "取消训练",
+    "下一个",
+    "再来一次",
+    "求助",
+    "UNKNOWN"
+  ],
+  "architecture": "conv2d(32,3x3,s2) -> dwconv3x3 -> pwconv1x1 -> avgpool2x2 -> dwconv3x3 -> pwconv1x1 -> avgpool2x2 -> flatten -> fc(6)",
+  "input_shape": [
+    98,
+    40,
+    1
+  ],
+  "split": {
+    "split_scheme": "random_by_sample_synthetic_selftest",
+    "speaker_disjoint": false,
+    "speaker_count": 0,
+    "train_speakers": null,
+    "val_speakers": null,
+    "test_speakers": null,
+    "train_samples": 540,
+    "val_samples": 180,
+    "test_samples": 0,
+    "has_independent_test_speakers": false,
+    "seed": 20260922,
+    "note": "合成自检语料没有真实说话人身份，不可能做按说话人划分，这里按样本随机切分，只用于验证训练/量化/导出链路可跑通，其数字不得作为关键词识别准确率引用。真实语料请用 --dataset 走 speaker_split 路径。"
+  },
+  "split_is_speaker_disjoint": false,
+  "float_val_accuracy": 1.0,
+  "float_test_accuracy": null,
+  "accuracy_interpretable_as_keyword_spotting": false,
+  "accuracy_interpretation_note": "本次运行使用合成自检语料（确定性生成音频，没有任何真实说话人），该数字只证明训练/量化/导出链路可跑通，不能解读为关键词识别准确率。真实识别率必须在 --dataset 录制的真实语料上、按说话人切分的测试集上测量。",
+  "layer_count": 8,
+  "op_sequence": [
+    "CONV_2D",
+    "DEPTHWISE_CONV_2D",
+    "CONV_2D",
+    "AVERAGE_POOL_2D",
+    "DEPTHWISE_CONV_2D",
+    "CONV_2D",
+    "AVERAGE_POOL_2D",
+    "FULLY_CONNECTED"
+  ],
+  "tflite_bytes": 25360,
+  "field_accuracy_validated": false,
+  "hardware_inference_validated": false,
+  "controls_servo": false,
+  "note": "Accuracy fields above are measured on the corpus named in `corpus` with the split described in `split`. For 'synthetic_deterministic_pipeline_selftest' they exercise the pipeline only and are NOT a keyword-spotting result. field_accuracy_validated stays false until a human measures the model on the real device; no script may set it."
+}

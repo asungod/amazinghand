@@ -1,0 +1,203 @@
+"""Bounded 2-D sequence prototypes, independent of UART and actuator code."""
+import math
+
+from gesture_features import extract_gesture_features
+from gesture_classifier import _palm_directed_extension, _classify_features
+
+
+SEQUENCES = {
+    "word_hello": (("shape:POINT", "伸出食指"), ("shape:THUMBS_UP", "切换竖拇指")),
+    "word_like": (("shape:L_SHAPE", "摆出 L 形"), ("shape:OK_PINCH", "拇指食指捏合")),
+    "word_thanks": (("thumb_open", "伸直拇指"), ("thumb_bend", "第一次弯拇指"),
+                    ("thumb_open", "第一次伸直"), ("thumb_bend", "第二次弯拇指"),
+                    ("thumb_open", "第二次伸直")),
+    "word_attention": (("index_open", "伸直食指"), ("index_bend", "第一次弯食指"),
+                       ("index_open", "第一次伸直"), ("index_bend", "第二次弯食指"),
+                       ("index_open", "第二次伸直")),
+    "signal_help": (("palm_open", "张开手掌"), ("thumb_in", "拇指收进掌心"),
+                    ("shape:FIST", "四指握住拇指")),
+    "word_no": (("point_anchor", "食指伸直居中"), ("point_side", "第一次摆向一侧"),
+                ("point_other", "第一次摆向另一侧"), ("point_side", "第二次摆向一侧"),
+                ("point_other", "第二次摆向另一侧"), ("point_center", "食指回中")),
+}
+
+
+def motion_evidence(points):
+    """Same-frame bounded geometry; not a hand identity or accuracy score."""
+    features = extract_gesture_features(points)
+    normalized = features["normalized_landmarks"]
+    result = {
+        "finger_extension": _palm_directed_extension(features["finger_extension"], normalized),
+        "thumb_angle_deg": features["thumb_angle_deg"],
+        "index_angle_deg": features["joint_angles_deg"][0],
+        "thumb_tip_distance": features["thumb_tip_distance"],
+        # Relative to palm, not camera/world translation. Whole-hand motion
+        # alone must not count as the finger's lateral bend.
+        "index_lateral": normalized[8][0] - normalized[5][0],
+        "thumb_inside": min(p[0] for p in normalized[5::4]) <= normalized[4][0] <=
+                        max(p[0] for p in normalized[5::4]) and
+                        0 <= normalized[4][1] <= normalized[9][1],
+    }
+    if not all(math.isfinite(value) for value in result["finger_extension"] +
+               [result[k] for k in ("thumb_angle_deg", "index_angle_deg",
+                                    "thumb_tip_distance", "index_lateral")]):
+        raise ValueError("nonfinite motion geometry")
+    # The classifier's rule thumb extension is needed for its existing gates.
+    result["thumb_extension"] = _classify_features(features)[2]["thumb_extension"]
+    return result
+
+
+class SignSequenceTracker:
+    """Ordered teaching phases; brief detection loss cannot earn hold time."""
+    HOLD_MS = 300
+    FINAL_HOLD_MS = 300
+    MAX_GAP_MS = 500
+    LOSS_GRACE_MS = 2000
+    PHASE_TIMEOUT_MS = 15000
+    LATERAL_DELTA = 0.35
+
+    def __init__(self, lesson_id):
+        self.steps = SEQUENCES[lesson_id]
+        self.reset()
+
+    def reset(self):
+        self.index = 0
+        self.since = None
+        self.count = 0
+        self.last_ms = None
+        self.last_usable_ms = None
+        self.phase_ms = None
+        self.anchor = None
+        self.side = None
+        self.hold_ms = 0
+        self.feedback = "按提示切换，保持约 0.3 秒"
+
+    def _clear_hold(self):
+        self.since = None
+        self.count = 0
+        self.hold_ms = 0
+
+    def snapshot(self):
+        return {"completed_steps": self.index, "total_steps": len(self.steps),
+                "complete": self.index == len(self.steps),
+                "prompt": "动作序列完成" if self.index == len(self.steps) else self.steps[self.index][1],
+                "phase_hold_ms": self.hold_ms, "required_hold_ms": self.FINAL_HOLD_MS
+                if self.index == len(self.steps)-1 else self.HOLD_MS,
+                "feedback": self.feedback, "scope": "2d_sequence_prototype"}
+
+    def _matches(self, key, result, evidence):
+        if key.startswith("shape:"):
+            confidence = result.get("confidence")
+            return (result.get("valid") is True and result.get("error_code") == "OK" and
+                    type(confidence) in (int, float) and math.isfinite(confidence) and
+                    0.64 <= confidence <= 1 and result.get("gesture_id") == key[6:])
+        fingers = evidence["finger_extension"]
+        folded = max(fingers) <= 0.62
+        others_folded = max(fingers[1:]) <= 0.62
+        thumb = evidence["thumb_extension"]
+        if key == "thumb_open":
+            return folded and thumb >= 0.55 and evidence["thumb_angle_deg"] >= 155
+        if key == "thumb_bend":
+            return folded and evidence["thumb_angle_deg"] <= 135 and thumb <= 0.45
+        if key == "index_open":
+            return (others_folded and thumb <= 0.52 and fingers[0] >= 0.72
+                    and evidence["index_angle_deg"] >= 155)
+        if key == "index_bend":
+            return others_folded and thumb <= 0.52 and evidence["index_angle_deg"] <= 135 and fingers[0] <= 0.85
+        if key == "palm_open":
+            return min(fingers) >= 0.68 and thumb >= 0.55
+        if key == "thumb_in":
+            return min(fingers) >= 0.68 and evidence["thumb_tip_distance"] <= 1.15 and evidence["thumb_inside"] is True
+        pointing = others_folded and fingers[0] >= 0.72 and thumb <= 0.52
+        if not pointing:
+            return False
+        lateral = evidence["index_lateral"]
+        if key == "point_anchor":
+            if self.anchor is None:
+                self.anchor = lateral
+            return abs(lateral-self.anchor) <= 0.15
+        delta = lateral-self.anchor
+        if key == "point_side":
+            if abs(delta) < self.LATERAL_DELTA:
+                return False
+            if self.side is None:
+                self.side = 1 if delta > 0 else -1
+            return delta*self.side >= self.LATERAL_DELTA
+        if key == "point_other":
+            return self.side is not None and delta*self.side <= -self.LATERAL_DELTA
+        if key == "point_center":
+            return abs(delta) <= 0.15
+        return False
+
+    @staticmethod
+    def _valid_evidence(evidence):
+        if not isinstance(evidence, dict):
+            return False
+        fingers = evidence.get("finger_extension")
+        if not isinstance(fingers, (list, tuple)) or len(fingers) != 4:
+            return False
+        def number(value, low, high):
+            return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
+        return (all(number(v, 0, 1) for v in fingers) and
+                number(evidence.get("thumb_extension"), 0, 1) and
+                number(evidence.get("thumb_angle_deg"), 0, 180) and
+                number(evidence.get("index_angle_deg"), 0, 180) and
+                number(evidence.get("thumb_tip_distance"), 0, 10) and
+                number(evidence.get("index_lateral"), -10, 10) and
+                type(evidence.get("thumb_inside")) is bool)
+
+    def observe(self, result, now_ms):
+        if self.index == len(self.steps):
+            return True
+        if self.last_ms is not None and now_ms < self.last_ms:
+            self.reset()
+            return False
+        if self.last_ms == now_ms:
+            return False
+        previous_ms = self.last_ms
+        self.last_ms = now_ms
+        if ((self.last_usable_ms is not None and now_ms-self.last_usable_ms > self.LOSS_GRACE_MS)
+                or (self.phase_ms is not None and now_ms-self.phase_ms > self.PHASE_TIMEOUT_MS)):
+            self.reset()
+            self.last_ms = now_ms
+            self.feedback = "离开画面过久或步骤超时，请从第 1 步重来"
+            return False
+        if not isinstance(result, dict):
+            result = {}
+        evidence = result.get("motion_evidence")
+        usable = (self._valid_evidence(evidence) and result.get("error_code") in ("OK", "LOW_CONFIDENCE"))
+        if not usable:
+            # Only ordinary missing-hand observations get a bounded teaching
+            # grace. Malformed geometry and SDK errors still reset immediately.
+            if not result or result.get("error_code") == "NO_HAND":
+                self._clear_hold()
+                if self.index:
+                    self.feedback = "短暂未检测到手：已完成步骤保留，请完整入镜"
+                return False
+            self.reset()
+            self.last_ms = now_ms
+            return False
+        self.last_usable_ms = now_ms
+        if previous_ms is not None and now_ms-previous_ms > self.MAX_GAP_MS:
+            self._clear_hold()
+        try:
+            matched = self._matches(self.steps[self.index][0], result, evidence)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            self.reset()
+            return False
+        if not matched:
+            self._clear_hold()
+            self.feedback = "已完成步骤保留；请按当前提示慢慢切换"
+            return False
+        if self.since is None:
+            self.since = now_ms
+        self.count += 1
+        self.hold_ms = now_ms-self.since
+        self.feedback = "当前动作保持中：{}/300 毫秒".format(min(self.hold_ms, 300))
+        required = self.FINAL_HOLD_MS if self.index == len(self.steps)-1 else self.HOLD_MS
+        if self.count >= 2 and self.hold_ms >= required:
+            self.index += 1
+            self._clear_hold()
+            self.phase_ms = now_ms
+            self.feedback = "本步已确认，请做下一步并保持约 0.3 秒"
+        return self.index == len(self.steps)

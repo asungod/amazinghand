@@ -1,0 +1,104 @@
+{
+  "format_version": 1,
+  "proposed_protocol_version": 2,
+  "cases": [
+    {
+      "name": "new_session_and_normal_messages",
+      "events": [
+        {"type": "hello", "seq": 0, "boot_id": 1001, "version": 2},
+        {"type": "message", "seq": 1},
+        {"type": "message", "seq": 2}
+      ],
+      "expected": {
+        "results": [
+          {"result": "accepted_reset", "ack_status": 0},
+          {"result": "accepted"},
+          {"result": "accepted"}
+        ],
+        "final": {"boot_id": 1001, "last_sequence": 2, "session_resets": 1, "target_clear_requests": 1}
+      }
+    },
+    {
+      "name": "duplicate_and_old_sequence_rejected",
+      "events": [
+        {"type": "hello", "seq": 10, "boot_id": 1001, "version": 2},
+        {"type": "message", "seq": 11},
+        {"type": "message", "seq": 11},
+        {"type": "message", "seq": 9}
+      ],
+      "expected": {
+        "results": [
+          {"result": "accepted_reset", "ack_status": 0},
+          {"result": "accepted"},
+          {"result": "rejected_old_or_duplicate"},
+          {"result": "rejected_old_or_duplicate"}
+        ],
+        "final": {"boot_id": 1001, "last_sequence": 11, "session_resets": 1, "target_clear_requests": 1}
+      }
+    },
+    {
+      "name": "same_hello_is_idempotent",
+      "events": [
+        {"type": "hello", "seq": 0, "boot_id": 1001, "version": 2},
+        {"type": "message", "seq": 100},
+        {"type": "hello", "seq": 0, "boot_id": 1001, "version": 2},
+        {"type": "message", "seq": 101}
+      ],
+      "expected": {
+        "results": [
+          {"result": "accepted_reset", "ack_status": 0},
+          {"result": "accepted"},
+          {"result": "accepted_same_session", "ack_status": 0},
+          {"result": "accepted"}
+        ],
+        "final": {"boot_id": 1001, "last_sequence": 101, "session_resets": 1, "target_clear_requests": 1}
+      }
+    },
+    {
+      "name": "new_boot_resets_sequence_and_target",
+      "events": [
+        {"type": "hello", "seq": 0, "boot_id": 1001, "version": 2},
+        {"type": "message", "seq": 200},
+        {"type": "hello", "seq": 0, "boot_id": 2002, "version": 2},
+        {"type": "message", "seq": 1}
+      ],
+      "expected": {
+        "results": [
+          {"result": "accepted_reset", "ack_status": 0},
+          {"result": "accepted"},
+          {"result": "accepted_reset", "ack_status": 0},
+          {"result": "accepted"}
+        ],
+        "final": {"boot_id": 2002, "last_sequence": 1, "session_resets": 2, "target_clear_requests": 2}
+      }
+    },
+    {
+      "name": "unsupported_version_does_not_change_session",
+      "events": [
+        {"type": "hello", "seq": 0, "boot_id": 1001, "version": 1}
+      ],
+      "expected": {
+        "results": [
+          {"result": "unsupported_version", "ack_status": 2}
+        ],
+        "final": {"boot_id": null, "last_sequence": null, "session_resets": 0, "target_clear_requests": 0}
+      }
+    },
+    {
+      "name": "sequence_rollover_within_session",
+      "events": [
+        {"type": "hello", "seq": 65534, "boot_id": 1001, "version": 2},
+        {"type": "message", "seq": 65535},
+        {"type": "message", "seq": 0}
+      ],
+      "expected": {
+        "results": [
+          {"result": "accepted_reset", "ack_status": 0},
+          {"result": "accepted"},
+          {"result": "accepted"}
+        ],
+        "final": {"boot_id": 1001, "last_sequence": 0, "session_resets": 1, "target_clear_requests": 1}
+      }
+    }
+  ]
+}

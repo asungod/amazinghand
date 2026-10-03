@@ -1,0 +1,112 @@
+{
+  "protocol": "smart_hand_ascii_v1",
+  "baud_only": 115200,
+  "hardware_accessed_default": false,
+  "timing_note": "750ms VISION_STALE and 1500ms OFFLINE cannot be proven by PC ACK alone; require Titan shell sh_status/log timing evidence.",
+  "cases": [
+    {
+      "id": "first_ping",
+      "title": "FIRST PING -> ACK0, link may go online",
+      "steps": [
+        {"send": {"type": "PING", "seq": 1, "args": []}, "expect_ack": {"seq": 1, "status": 0}}
+      ],
+      "expect_side_effects": ["link may become ONLINE", "sequence baseline established"],
+      "evidence": ["ACK", "Titan shell sh_status link=ONLINE"]
+    },
+    {
+      "id": "vision_three_classes_empty_pose",
+      "title": "bottle/cup/remote VISION ACK0 correct action actionable=0",
+      "steps": [
+        {"send": {"type": "VISION", "seq": 2, "args": [39, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 2, "status": 0}, "expect_action": "CYLINDRICAL_GRASP", "expect_actionable": 0},
+        {"send": {"type": "VISION", "seq": 3, "args": [41, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 3, "status": 0}, "expect_action": "POWER_GRASP", "expect_actionable": 0},
+        {"send": {"type": "VISION", "seq": 4, "args": [65, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 4, "status": 0}, "expect_action": "PRECISION_GRASP", "expect_actionable": 0}
+      ],
+      "expect_side_effects": ["pose=NOT_CONFIGURED", "actionable=0"],
+      "evidence": ["ACK", "Titan shell VISION log lines"]
+    },
+    {
+      "id": "low_conf_and_unsupported",
+      "title": "low confidence and unsupported class -> ACK0 NO_ACTION",
+      "steps": [
+        {"send": {"type": "VISION", "seq": 5, "args": [39, 320, 240, 80, 120, 69]}, "expect_ack": {"seq": 5, "status": 0}, "expect_action": "NO_ACTION"},
+        {"send": {"type": "VISION", "seq": 6, "args": [1, 320, 240, 80, 120, 99]}, "expect_ack": {"seq": 6, "status": 0}, "expect_action": "NO_ACTION"}
+      ],
+      "expect_side_effects": ["policy reject", "no actionable"],
+      "evidence": ["ACK", "Titan shell reason=low_confidence|unsupported_class"]
+    },
+    {
+      "id": "illegal_payload",
+      "title": "illegal VISION width=0 -> ACK1 clear vision",
+      "steps": [
+        {"send": {"type": "VISION", "seq": 7, "args": [39, 320, 240, 0, 120, 90]}, "expect_ack": {"seq": 7, "status": 1}}
+      ],
+      "expect_side_effects": ["vision candidate cleared", "no link/seq refresh for illegal payload"],
+      "evidence": ["ACK status=1", "Titan shell invalid VISION / present=0"]
+    },
+    {
+      "id": "duplicate",
+      "title": "duplicate seq -> ACK0 business not refreshed",
+      "steps": [
+        {"send": {"type": "VISION", "seq": 10, "args": [39, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 10, "status": 0}},
+        {"send": {"type": "VISION", "seq": 10, "args": [41, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 10, "status": 0}, "expect_ignored": "duplicate"}
+      ],
+      "expect_side_effects": ["ignored_duplicate", "last vision class remains 39"],
+      "evidence": ["ACK", "Titan shell ignored_duplicate"]
+    },
+    {
+      "id": "old",
+      "title": "old seq -> ACK0 business not refreshed",
+      "steps": [
+        {"send": {"type": "VISION", "seq": 20, "args": [39, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 20, "status": 0}},
+        {"send": {"type": "VISION", "seq": 19, "args": [65, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 19, "status": 0}, "expect_ignored": "old"}
+      ],
+      "expect_side_effects": ["ignored_old"],
+      "evidence": ["ACK", "Titan shell ignored_old"]
+    },
+    {
+      "id": "forward_gap",
+      "title": "forward gap -> ACK0 accept and count gap",
+      "steps": [
+        {"send": {"type": "PING", "seq": 30, "args": []}, "expect_ack": {"seq": 30, "status": 0}},
+        {"send": {"type": "PING", "seq": 35, "args": []}, "expect_ack": {"seq": 35, "status": 0}, "expect_gap": true}
+      ],
+      "expect_side_effects": ["sequence gap counted", "last_accepted=35"],
+      "evidence": ["ACK", "Titan shell sequence gaps"]
+    },
+    {
+      "id": "stale_750ms",
+      "title": "PING keep-alive but vision stale ~750ms",
+      "steps": [
+        {"send": {"type": "VISION", "seq": 40, "args": [39, 320, 240, 80, 120, 90]}, "expect_ack": {"seq": 40, "status": 0}},
+        {"send": {"type": "PING", "seq": 41, "args": []}, "expect_ack": {"seq": 41, "status": 0}},
+        {"wait_ms": 750, "expect_shell": "VISION_STALE"}
+      ],
+      "expect_side_effects": ["vision cleared while link may stay ONLINE"],
+      "evidence": ["ACK alone insufficient", "Titan shell timing + sh_status vision present=0"],
+      "pc_ack_cannot_pass_alone": true
+    },
+    {
+      "id": "offline_1500ms",
+      "title": "no frames ~1500ms -> offline",
+      "steps": [
+        {"send": {"type": "PING", "seq": 50, "args": []}, "expect_ack": {"seq": 50, "status": 0}},
+        {"wait_ms": 1500, "expect_shell": "VISION_OFFLINE"}
+      ],
+      "expect_side_effects": ["sequence baseline reset", "vision cleared"],
+      "evidence": ["ACK alone insufficient", "Titan shell OFFLINE log"],
+      "pc_ack_cannot_pass_alone": true
+    },
+    {
+      "id": "first_after_offline",
+      "title": "after offline low seq becomes FIRST again",
+      "steps": [
+        {"send": {"type": "PING", "seq": 60, "args": []}, "expect_ack": {"seq": 60, "status": 0}},
+        {"wait_ms": 1500, "expect_shell": "VISION_OFFLINE"},
+        {"send": {"type": "PING", "seq": 1, "args": []}, "expect_ack": {"seq": 1, "status": 0}, "expect_first_after_reset": true}
+      ],
+      "expect_side_effects": ["new FIRST accepted", "no auto motion"],
+      "evidence": ["ACK", "Titan shell sequence have_last after reset"],
+      "pc_ack_cannot_pass_alone": true
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "format_version": 1,
+  "cases": [
+    {
+      "name": "normal_ping",
+      "purpose": "baseline valid frame",
+      "chunks_hex": [
+        "2450494E472C312A463639320D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 1,
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "fragmented_vision",
+      "purpose": "one frame split at arbitrary UART read boundaries",
+      "chunks_hex": [
+        "2456",
+        "4953494F4E2C33",
+        "2C34312C3332302C3234302C38302C3132302C39312A464641340D0A"
+      ],
+      "expected": [
+        {
+          "type": "VISION",
+          "seq": 3,
+          "args": [
+            41,
+            320,
+            240,
+            80,
+            120,
+            91
+          ]
+        }
+      ]
+    },
+    {
+      "name": "concatenated_frames",
+      "purpose": "multiple complete frames in one UART read",
+      "chunks_hex": [
+        "2450494E472C312A463639320D0A24564953494F4E2C332C34312C3332302C3234302C38302C3132302C39312A464641340D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 1,
+          "args": []
+        },
+        {
+          "type": "VISION",
+          "seq": 3,
+          "args": [
+            41,
+            320,
+            240,
+            80,
+            120,
+            91
+          ]
+        }
+      ]
+    },
+    {
+      "name": "crc_error_then_recovery",
+      "purpose": "drop a corrupted frame and recover the next valid frame",
+      "chunks_hex": [
+        "24564952494F4E2C372C34372C3130302C3132302C33302C34302C38382A373833420D0A2450494E472C322A433646310D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 2,
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "garbage_prefix",
+      "purpose": "ignore boot text and noise before a frame header",
+      "chunks_hex": [
+        "626F6F74206C6F670D0A6E6F69736500FF2450494E472C312A463639320D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 1,
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "unterminated_then_new_header",
+      "purpose": "restart parsing when a new header arrives before newline",
+      "chunks_hex": [
+        "24564953494F4E2C392C62726F6B656E",
+        "2450494E472C322A433646310D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 2,
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "oversized_unterminated_then_recovery",
+      "purpose": "bound parser memory and recover after oversized input",
+      "chunks_hex": [
+        "244141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
+        "2450494E472C312A463639320D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 1,
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "unknown_type_then_recovery",
+      "purpose": "drop a valid-CRC unsupported type and continue",
+      "chunks_hex": [
+        "24554E4B4E4F574E2C352A303437450D0A2450494E472C322A433646310D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 2,
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "sequence_rollover",
+      "purpose": "accept the unsigned 16-bit sequence boundary",
+      "chunks_hex": [
+        "2450494E472C36353533352A343139300D0A",
+        "2450494E472C302A453642330D0A"
+      ],
+      "expected": [
+        {
+          "type": "PING",
+          "seq": 65535,
+          "args": []
+        },
+        {
+          "type": "PING",
+          "seq": 0,
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "maximum_status_payload",
+      "purpose": "accept the unsigned 32-bit argument boundary",
+      "chunks_hex": [
+        "245354415455532C382C343239343936373239352C302A434434450D0A"
+      ],
+      "expected": [
+        {
+          "type": "STATUS",
+          "seq": 8,
+          "args": [
+            4294967295,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

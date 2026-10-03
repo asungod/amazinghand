@@ -1,0 +1,23 @@
+{
+  "result": "PASS",
+  "hardware_accessed": false,
+  "vision": {
+    "observations": 26,
+    "transmissions": 4,
+    "accepted": 2,
+    "rejected": 2,
+    "tracker": "observations=26 empty=12 invalid=0 acquired=1 updated=8 switches=1 lost=1 candidate_frames=0 active=0"
+  },
+  "execution_failure_path": {
+    "event": "link_loss_while_holding",
+    "result": "safe_stop_required",
+    "final_state": "FAULT",
+    "fault_reason": "link_offline"
+  },
+  "uart_fault_cases": 10,
+  "physical_motion": {
+    "authorized": false,
+    "reason": "calibration must contain exactly 2 rows",
+    "calibration_file": "C:\\Users\\zzh\\OneDrive\\Desktop\\PCBBOM\\嵌赛物联网\\smart_hand\\config\\servo_calibration_template.csv"
+  }
+}

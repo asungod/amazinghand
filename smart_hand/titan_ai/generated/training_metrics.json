@@ -1,0 +1,46 @@
+{
+  "schema": "amazinghand.titantrust.training",
+  "schema_version": 1,
+  "seed": 20260827,
+  "corpus": "deterministic_synthetic_fault_injection",
+  "samples_total": 9000,
+  "samples_test": 2250,
+  "accuracy_synthetic_holdout": 0.9991111111111111,
+  "confusion_matrix": [
+    [
+      750,
+      0,
+      0
+    ],
+    [
+      1,
+      749,
+      0
+    ],
+    [
+      0,
+      1,
+      749
+    ]
+  ],
+  "classes": [
+    "TRUSTED",
+    "UNCERTAIN",
+    "ANOMALOUS"
+  ],
+  "features": [
+    "confidence_pct",
+    "bbox_motion_pct",
+    "bbox_scale_change_pct",
+    "arrival_interval_ms",
+    "arrival_jitter_ms",
+    "sequence_gap_delta",
+    "invalid_frame_delta",
+    "duplicate_old_delta",
+    "vision_age_ms",
+    "valid_frame_ratio_pct"
+  ],
+  "field_accuracy_validated": false,
+  "hardware_inference_validated": false,
+  "controls_servo": false
+}

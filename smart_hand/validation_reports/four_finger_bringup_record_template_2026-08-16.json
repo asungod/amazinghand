@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "status": "TEMPLATE_ONLY",
+  "current_gate": 0,
+  "requested_gate": null,
+  "hardware_accessed": false,
+  "mechanical_complete": false,
+  "mechanical_evidence": "",
+  "roles": [
+    {
+      "role": "F1_PROXIMAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    },
+    {
+      "role": "F1_DISTAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    },
+    {
+      "role": "F2_PROXIMAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    },
+    {
+      "role": "F2_DISTAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    },
+    {
+      "role": "F3_PROXIMAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    },
+    {
+      "role": "F3_DISTAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    },
+    {
+      "role": "F4_PROXIMAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    },
+    {
+      "role": "F4_DISTAL",
+      "servo_id": null,
+      "enumeration_status": "PENDING",
+      "readback_ok": false,
+      "enumeration_evidence": "",
+      "calibration_status": "PENDING",
+      "direction_sign": null,
+      "center_raw": null,
+      "soft_min_raw": null,
+      "soft_max_raw": null,
+      "calibration_evidence": ""
+    }
+  ],
+  "power": {
+    "external_6v_enabled": false,
+    "profile_approved": false,
+    "voltage_v": null,
+    "current_limit_a": null,
+    "operator_present": false,
+    "emergency_disconnect_ready": false,
+    "approval_evidence": ""
+  },
+  "stop": {
+    "reason": "NONE",
+    "stop_latched": false,
+    "motion_authorized": false,
+    "next_gate_authorized": false,
+    "evidence": ""
+  }
+}
