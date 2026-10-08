@@ -640,6 +640,8 @@ function getEl(id) {{
             style: {{}},
             disabled: false,
             hidden: false,
+            children: [],
+            appendChild: function(v) {{ this.children.push(v); }},
             setAttribute: function(k, v) {{ this[k] = v; }},
             getAttribute: function(k) {{ return this[k] || null; }},
             querySelectorAll: function() {{ return []; }}
@@ -650,6 +652,7 @@ function getEl(id) {{
 
 global.document = {{
     getElementById: getEl,
+    createElement: function() {{ return {{textContent:'',className:''}}; }},
     querySelectorAll: function() {{ return []; }}
 }};
 
@@ -882,7 +885,7 @@ if(aiMode==='offline')return Promise.reject(new Error('offline'));
 if(aiMode==='key')return Promise.resolve({ok:false,json:()=>Promise.resolve({error:'api_key_rejected'})});
 if(aiMode==='timeout')return Promise.resolve({ok:false,json:()=>Promise.resolve({error:'provider_timeout'})});
 if(aiMode==='down')return Promise.resolve({ok:false,json:()=>Promise.resolve({error:'provider_unavailable'})});
-return Promise.resolve({ok:true,json:()=>Promise.resolve({advice:'下次先练 V 手势，观察两指间距。'})});}
+return Promise.resolve({ok:true,json:()=>Promise.resolve({advice:'下次先练 V 手势，观察两指间距。',source:'model',fallback_reason:null})});}
 if(opts&&opts.method==='POST'){posts.push({url,body:opts.body});return Promise.resolve({json:()=>Promise.resolve({state:'queued'})});}
 return Promise.resolve({json:()=>Promise.resolve(url.includes('/api/v1/sign/status')?sign:{can_submit:false,state:'idle'})});};
 """ + script + r"""
@@ -954,12 +957,16 @@ assert(downloads.at(-1).includes('不是完整连续动作通过'));
 assert(downloads.at(-1).includes('本次不足'));
 assert(downloads.at(-1).includes('下次练习建议'));
 assert(downloads.at(-1).includes('下次先练 V 手势'));
-assert.strictEqual(el('levelAiBadge').textContent,'已生成');
+assert(downloads.at(-1).includes('模型建议（仅供参考）'));
+assert.strictEqual(el('levelAiBadge').textContent,'模型建议');
 assert.strictEqual(el('levelAiBadge').className,'ai-badge ready');
 aiMode='offline';el('levelAiAdvice').onclick();await flush();
+assert(el('levelAiStatus').textContent.includes('分析暂不可用'));
 assert(el('levelAiStatus').textContent.includes('原有训练报告不受影响'));
-assert(el('levelReport').textContent.includes('下次先练 V 手势'));
-assert(el('levelAiResult').textContent.includes('下次先练 V 手势'));
+assert(!el('levelReport').textContent.includes('下次先练 V 手势'));
+assert(!el('levelAiResult').textContent.includes('下次先练 V 手势'));
+assert(!el('levelAiResult').textContent.includes('本地规则建议'));
+assert.strictEqual(el('levelAiBadge').textContent,'暂不可用');
 el('levelNext').onclick();await flush();
 sign={state:'IMITATING',lesson_id:'basic_fist',recognition_error_code:'LOW_CONFIDENCE',stable_ms:120};poll();await flush();
 sign={state:'TIMEOUT',lesson_id:'basic_fist',error_code:'TIMEOUT'};poll();await flush();
@@ -1005,11 +1012,11 @@ run().catch(e=>{console.error(e);process.exit(1);});
         script = _CONTROL_PAGE.decode("utf-8").split("<script>", 1)[1].split("</script>", 1)[0]
         driver = r"""
 const assert=require('assert'),elements={},posts=[],intervals=[];
-function el(id){if(!elements[id])elements[id]={textContent:'',className:'',style:{},hidden:false,disabled:false,getAttribute(k){return this[k]||null;},setAttribute(k,v){this[k]=v;}};return elements[id];}
+function el(id){if(!elements[id])elements[id]={textContent:'',className:'',style:{},hidden:false,disabled:false,children:[],appendChild(v){this.children.push(v);},getAttribute(k){return this[k]||null;},setAttribute(k,v){this[k]=v;}};return elements[id];}
 const beginner=el('beginner');beginner['data-level']='beginner';
 const advanced=el('advanced');advanced['data-level']='advanced';
 const single=el('single');single['data-lesson']='basic_l_shape';
-global.document={getElementById:el,querySelectorAll(q){return q==='[data-level]'?[beginner,advanced]:q==='[data-lesson]'?[single]:[];}};
+global.document={getElementById:el,createElement:()=>({textContent:'',className:''}),querySelectorAll(q){return q==='[data-level]'?[beginner,advanced]:q==='[data-lesson]'?[single]:[];}};
 let scrolls=0;el('analysis').scrollIntoView=()=>{scrolls++;};
 global.performance={now:()=>1000};global.setInterval=(fn,ms)=>intervals.push({fn,ms});
 let sign={state:'IDLE'};

@@ -88,6 +88,38 @@ class SignDetectorRetryTests(unittest.TestCase):
         self.assertEqual(source.frames, 4)
         self.assertEqual(len(detector.calls), 5)
 
+    def test_actual_adapter_missing_code_preserves_dynamic_course_progress(self):
+        from sign_lesson import SignLessonController
+        from smart_hand.tests.test_sign_sequence import observation
+        source, _, _ = self.source([[], []])
+        controller = SignLessonController()
+        controller.select_lesson("signal_help", 0)
+        controller.start(0, manual_confirm=True, link_online=True, vision_fresh=True)
+        controller.begin_demo(0, link_online=True, vision_fresh=True)
+        controller.finish_demo(0, link_online=True, vision_fresh=True)
+        for phase, start in (("palm_open", 0), ("thumb_in", 400)):
+            for delta in (0, 150, 320):
+                controller.observe(observation(phase), start+delta)
+        self.assertEqual(controller.status()["motion_progress"]["completed_steps"], 2)
+        missing = source.read_sign(850)
+        self.assertEqual(missing["error_code"], "hand_not_found")
+        controller.observe(missing, 850)
+        progress = controller.status()["motion_progress"]
+        self.assertEqual(progress["completed_steps"], 2)
+        self.assertEqual(progress["observation_state"], "MISSING")
+        self.assertEqual(progress["phase_hold_ms"], 0)
+        self.assertFalse(progress["complete"])
+        for now in (1100, 1250, 1420):
+            controller.observe(observation("help_close"), now)
+        # The occluded final step uses operator review, not automatic scoring.
+        self.assertEqual(controller.state, "IMITATING")
+        self.assertEqual(controller.status()["motion_progress"]["completed_steps"], 2)
+        self.assertFalse(controller.status()["motion_progress"]["complete"])
+        result = controller.review_manual(1500, True, controller.session_token)
+        self.assertEqual(result["state"], "REVIEWED")
+        self.assertEqual(controller.status()["motion_progress"]["completed_steps"], 2)
+        self.assertFalse(controller.status()["motion_progress"]["complete"])
+
     def test_retry_label_is_not_forced_to_v_or_l(self):
         source, _, _ = self.source([[], [sdk_hand((False,)*4)]])
         self.assertEqual(source.read_sign(0)["gesture_id"], "OPEN_PALM")

@@ -277,4 +277,3 @@ class ImitationSessionController:
         return "IMITATE {}/{} {:.1f}s".format(
             self.repetitions, self.goal_repetitions, seconds
         )
-

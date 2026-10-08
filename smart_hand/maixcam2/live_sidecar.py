@@ -105,7 +105,7 @@ class WebTrainIntentLatch:
 
 
 class WebSignIntentLatch:
-    """Bounded transport for sign ``select/start/cancel`` commands.
+    """Bounded transport for sign ``select/start/cancel/review`` commands.
 
     The latch is deliberately controller-agnostic.  HTTP callbacks only
     validate/record a command; the Maix main loop must call ``take`` and
@@ -113,7 +113,7 @@ class WebSignIntentLatch:
     controller or hardware-facing code.
     """
 
-    _ACTIONS = ("select", "start", "cancel")
+    _ACTIONS = ("select", "start", "cancel", "review")
 
     def __init__(self, now_ms_provider=None, elapsed_ms=None, ttl_ms=2000):
         if type(ttl_ms) is not int or ttl_ms < 1:
@@ -129,13 +129,19 @@ class WebSignIntentLatch:
             "reason": "no_request",
         }
 
-    def enqueue(self, action, lesson_id=None):
+    def enqueue(self, action, lesson_id=None, session_token=None, manual_confirm=False):
         if action not in self._ACTIONS or self._pending is not None:
             return None
-        if action == "select":
+        if action in ("select", "review"):
             if not isinstance(lesson_id, str) or not lesson_id or len(lesson_id) > 64:
                 return None
         elif lesson_id is not None:
+            return None
+        if action == "review":
+            if (type(session_token) is not int or not 1 <= session_token <= 0x7FFFFFFF or
+                    manual_confirm is not True):
+                return None
+        elif session_token is not None or manual_confirm is not False:
             return None
         request_id = self._next_request_id
         self._next_request_id = 1 if request_id >= 0x7FFFFFFF else request_id + 1
@@ -145,6 +151,8 @@ class WebSignIntentLatch:
             "lesson_id": lesson_id,
             "enqueued_ms": self._now_ms(),
         }
+        if action == "review":
+            self._pending.update(session_token=session_token, manual_confirm=True)
         self._status = {
             "request_id": request_id,
             "state": "pending",
@@ -258,6 +266,7 @@ class LiveWebSidecar:
         sign_select_handler=None,
         sign_start_handler=None,
         sign_cancel_handler=None,
+        sign_review_handler=None,
         sign_status_provider=None,
         sign_enabled=False,
         now_ms_provider=None,
@@ -290,12 +299,13 @@ class LiveWebSidecar:
         # become live only when an integration supplies a sign status or
         # command handler.
         if sign_enabled or any(callable(handler) for handler in (
-            sign_select_handler, sign_start_handler, sign_cancel_handler,
+            sign_select_handler, sign_start_handler, sign_cancel_handler, sign_review_handler,
         )) or callable(sign_status_provider):
             server_kwargs.update({
                 "sign_select_handler": sign_select_handler or self.enqueue_web_sign_select,
                 "sign_start_handler": sign_start_handler or self.enqueue_web_sign_start,
                 "sign_cancel_handler": sign_cancel_handler or self.enqueue_web_sign_cancel,
+                "sign_review_handler": sign_review_handler or self.enqueue_web_sign_review,
                 "sign_status_provider": sign_status_provider or self.sign_status,
             })
         self.server = server_factory(**server_kwargs)
@@ -405,7 +415,7 @@ class LiveWebSidecar:
             "IMITATE": "running", "IMITATING": "running", "IMITATION": "running",
             "COMPLETE": "complete", "COMPLETED": "complete",
             "TIMEOUT": "timeout", "FAILED": "failed", "CANCELLED": "failed",
-            "FAULT": "failed",
+            "FAULT": "failed", "REVIEWED": "idle",
         }
         if sign_state in sign_phases:
             return sign_phases[sign_state]
@@ -613,6 +623,12 @@ class LiveWebSidecar:
             "state": "queued_for_main",
             "action": "cancel",
         }
+
+    def enqueue_web_sign_review(self, lesson_id, session_token, manual_confirm):
+        request_id = self.web_sign_intents.enqueue("review", lesson_id, session_token, manual_confirm)
+        if request_id is None:
+            return None
+        return {"request_id": request_id, "state": "queued_for_main", "action": "review"}
 
     def take_web_sign_intent(self):
         return self.web_sign_intents.take()

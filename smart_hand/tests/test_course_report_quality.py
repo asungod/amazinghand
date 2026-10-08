@@ -23,7 +23,7 @@ class CourseReportQualityTests(unittest.TestCase):
         driver = r"""
 const assert=require('assert'),elements={},intervals=[],aiRequests=[],downloads=[],posts=[],keyListeners=[];
 let focusId=null;
-function el(id){if(!elements[id])elements[id]={textContent:'',className:'',style:{},hidden:false,disabled:false,focus(){focusId=id;},getAttribute(k){return this[k]||null;},setAttribute(k,v){this[k]=v;}};return elements[id];}
+function el(id){if(!elements[id])elements[id]={textContent:'',className:'',style:{},hidden:false,disabled:false,children:[],appendChild(v){this.children.push(v);},focus(){focusId=id;},getAttribute(k){return this[k]||null;},setAttribute(k,v){this[k]=v;}};return elements[id];}
 const beginner=el('beginner');beginner['data-level']='beginner';
 const advanced=el('advanced');advanced['data-level']='advanced';
 const communicationButtons=COMMUNICATION_TEXT.map((text,i)=>{const button=el('communication_'+i);button['data-communication']=text;return button;});
@@ -35,7 +35,7 @@ global.setInterval=(fn,ms)=>intervals.push({fn,ms});
 global.Blob=function(parts){downloads.push(String(parts[0]));};
 global.URL={createObjectURL:()=>'blob:test',revokeObjectURL:()=>{}};
 global.fetch=(url,opts)=>{
-if(url.includes('/api/v1/ai/course-advice')){aiRequests.push(JSON.parse(opts.body));return Promise.resolve({ok:true,json:()=>Promise.resolve({advice:'检查入镜与光照，再短时复练。'})});}
+if(url.includes('/api/v1/ai/course-advice')){aiRequests.push(JSON.parse(opts.body));return Promise.resolve({ok:true,json:()=>Promise.resolve({advice:'检查入镜与光照，再短时复练。',source:'model',fallback_reason:null})});}
 if(opts&&opts.method==='POST'){posts.push(url);return Promise.resolve({json:()=>Promise.resolve({state:'queued'})});}
 return Promise.resolve({json:()=>Promise.resolve(url.includes('/api/v1/sign/status')?sign:{can_submit:false,state:'idle'})});};
 """.replace("INITIAL_STORAGE", json.dumps(json.dumps(saved) if saved is not None else None))

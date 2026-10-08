@@ -1,10 +1,23 @@
 """Real-page tests: communication remains independent of AI and actuator routes."""
 import unittest
+import json
 from smart_hand.tests import test_course_report_quality as harness
 from smart_hand.maixcam2.web_stream import _CONTROL_PAGE
 
 
 class AccessibleContextTests(unittest.TestCase):
+    def test_device_l_course_name_and_hud_match_shape_only_boundary(self):
+        from smart_hand.tests.test_sign_core import lesson_catalog
+        name = lesson_catalog()["basic_l_shape"]["name_zh"]
+        self.run_page(r"""
+await state({state:'LESSON_SELECTED',lesson_id:'basic_l_shape',lesson_name:DEVICE_NAME});
+assert.strictEqual(el('lesson').textContent,'L 形基础手型原型');
+assert.strictEqual(el('hudLesson').textContent,el('lesson').textContent);
+assert(!el('lesson').textContent.includes('手指字母'));
+assert(el('meaningBoundary').textContent.includes('不认证手指字母'));
+assert.strictEqual(posts.length,0);assert.strictEqual(aiRequests.length,0);
+""".replace('DEVICE_NAME', json.dumps(name)))
+
     def run_page(self, checks):
         # Reuse the real script harness without duplicating production logic.
         harness.CourseReportQualityTests.run_page(self, checks, exports=

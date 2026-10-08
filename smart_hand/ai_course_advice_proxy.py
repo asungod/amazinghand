@@ -36,12 +36,12 @@ LESSON_NAMES = {
     "word_no": "拒绝／不", "word_attention": "请注意", "word_like": "喜欢／爱心",
     "signal_help": "求助信号",
 }
-STATES = frozenset(("COMPLETE", "TIMEOUT", "CANCELLED", "FAULT"))
+STATES = frozenset(("COMPLETE", "REVIEWED", "TIMEOUT", "CANCELLED", "FAULT"))
 REASONS = frozenset((
     "OK", "NONE", "TIMEOUT", "CANCELLED", "FAULT", "EXTERNAL_FAULT",
     "NO_HAND", "HAND_NOT_FOUND", "INVALID_LANDMARKS", "LOW_CONFIDENCE",
     "WRONG_GESTURE", "TARGET_MISMATCH", "LINK_OFFLINE", "VISION_STALE",
-    "INVALID_RESULT", "UNKNOWN_GESTURE",
+    "INVALID_RESULT", "UNKNOWN_GESTURE", "MANUAL_REVIEW",
 ))
 MAX_BODY = 4096
 MAX_ADVICE_CHARS = 800
@@ -60,6 +60,7 @@ EVALUATION_LIMIT = (
 )
 SYSTEM_PROMPT = (
     "你是手势训练记录分析助手。只依据给定的匿名课程终态记录，用中文输出纯文本，"
+    "REVIEWED是操作者人工复核，不是自动识别通过；不得把它算入自动达标或声称已自动完成。"
     "总长不超过350字，并按以下三个小标题各写一节：本次不足、证据局限、下次练习建议。"
     "使用 lesson_names 提供的中文课程名，不输出英文课程ID或程序字段名。"
     "只解释本轮已记录课程的证据局限，不照抄所有技术说明；没有动态课程就不要讨论动态课程。"
@@ -193,6 +194,12 @@ def validate_summary(payload):
                     progress["complete"] != (row["state"] == "COMPLETE")):
                 raise ValueError("invalid_motion_progress")
             clean_row["motion_progress"] = dict(progress)
+        if (reason == "MANUAL_REVIEW") != (row["state"] == "REVIEWED"):
+            raise ValueError("invalid_manual_review")
+        if row["state"] == "REVIEWED" and (
+                row["lesson_id"] not in MOTION_STEP_COUNTS or reason != "MANUAL_REVIEW" or
+                not isinstance(progress, dict) or progress["complete"]):
+            raise ValueError("invalid_manual_review")
         clean.append(clean_row)
     summary = {"level": level, "planned_count": len(plan), "rows": clean}
     if "plan" in payload:
@@ -213,6 +220,8 @@ def model_url(base_url):
 def evaluation_limit(summary):
     rows = summary["rows"]
     parts = [EVALUATION_LIMIT]
+    if any(row["state"] == "REVIEWED" for row in rows):
+        parts.append("REVIEWED仅记录操作者人工复核，不是自动达标、专业鉴定或动作能力证据；保留的步骤数只代表自动检测已确认部分。")
     if any(row["lesson_id"] not in MOTION_STEP_COUNTS for row in rows):
         parts.append("本轮静态课程验证目标手型与保持门限，不是完整连续动作通过。")
     dynamic = [row for row in rows if row["lesson_id"] in MOTION_STEP_COUNTS]
@@ -430,6 +439,8 @@ def local_advice(summary):
         if row["state"] == "COMPLETE" and type(hold) is int and hold >= HOLD_GATE_MS:
             hold_met = True
             gaps.append("{}已完成，通过时保持 {} 毫秒，已经达到保持门限。".format(name, hold))
+        elif row["state"] == "REVIEWED":
+            gaps.append("{}人工复核已记录，不是自动识别通过，不能据此评价动作能力。".format(name))
         elif row["state"] == "TIMEOUT":
             gaps.append("{}这次超时。仅凭该终态不能判断是手型还是拍摄条件。".format(name))
         elif row["state"] in ("FAULT", "CANCELLED"):

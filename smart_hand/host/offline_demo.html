@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenSignHand 离线演示</title>
+<style>
+:focus-visible{outline:3px solid #0b3d2e;outline-offset:3px}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#1c2b26;background:#f4f7f4;line-height:1.55}
+header,main{width:min(980px,100%);margin:0 auto;padding:16px}
+.banner{position:sticky;top:0;z-index:10;margin:0;background:#7a2e12;color:#fff;padding:14px 16px;font-weight:700}
+h1{font-size:1.6rem;margin:12px 0}
+h2{font-size:1.25rem;margin:0 0 8px}
+.note,.ai{background:#fff;border:1px solid #c9d5ce;border-radius:10px;padding:12px;margin:12px 0}
+.levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.level,.detail,.report{background:#fff;border:1px solid #c9d5ce;border-radius:10px;padding:12px}
+button,.download{font:inherit;border:1px solid #245c49;background:#fff;color:#14382c;border-radius:8px;padding:8px 10px;margin:4px 4px 0 0;max-width:100%}
+button[aria-pressed="true"]{background:#14382c;color:#fff}
+.lesson{display:block;width:100%;text-align:left;white-space:normal}
+.download{display:inline-block;overflow-wrap:anywhere}
+label,textarea{display:block;width:100%}
+textarea{min-height:5.5rem;margin-top:6px;padding:8px;font:inherit}
+#communication-text,.banner{overflow-wrap:anywhere}
+.lesson[aria-current="true"]{background:#e7f3ec}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#communication-display{background:#14382c;color:#fff;border-radius:10px;padding:16px;margin-top:10px}
+#communication-text{font-size:1.4rem;white-space:pre-wrap}
+body.easy-read{font-size:1.35rem}
+body.easy-read #communication-text{font-size:2rem}
+pre{white-space:pre-wrap;font-family:inherit}
+@media(max-width:760px){
+header,main{padding:12px}
+.levels{grid-template-columns:1fr}
+h1{font-size:1.35rem}
+}
+</style>
+</head>
+<body>
+<p class="banner" id="banner" role="status">离线演示：示例数据，非设备识别或真实训练成绩</p>
+<header>
+<h1>OpenSignHand 预习页</h1>
+<p>这里只检查课程名称、表达情境和展示顺序。没有摄像头、机械手或模型调用。翻页和示例报告都不计成绩。</p>
+</header>
+<main>
+<section class="ai" aria-label="模型状态">
+<h2>建议</h2>
+<p id="ai-note">离线演示未调用模型</p>
+</section>
+<div class="row">
+<button type="button" id="easy-read" aria-pressed="false">大字阅读</button>
+</div>
+<div class="levels" id="levels"></div>
+<section class="detail" id="detail" aria-live="polite">
+<h2 id="lesson-name">请选择一节课</h2>
+<p id="lesson-kind"></p>
+<p><strong>表达目的</strong> <span id="lesson-intent"></span></p>
+<p><strong>交流示例</strong> <span id="lesson-example"></span></p>
+<p><strong>边界</strong> <span id="lesson-boundary"></span></p>
+<p><strong>动作说明</strong> <span id="lesson-motion"></span></p>
+<div id="preview" hidden>
+<p id="step-status">教学预览，不计成绩</p>
+<p id="step-label"></p>
+<p id="step-instruction"></p>
+<p>以下为正式练习的动作参考说明；本页只能翻看，不会确认步骤，说明里的“已确认”不是本页反馈。</p>
+<p id="step-score">未评分</p>
+<div class="row">
+<button type="button" id="prev-step">上一动作</button>
+<button type="button" id="next-step">下一动作</button>
+</div>
+</div>
+</section>
+<section aria-label="文字沟通卡">
+<h2>文字沟通卡</h2>
+<p id="communication-status">内容仅留在浏览器，不上传、不持久保存。</p>
+<div id="cards"></div>
+<label for="communication-input">写下想显示的话（最多 80 字）</label>
+<textarea id="communication-input" maxlength="160"></textarea>
+<div class="row">
+<button type="button" id="communication-show">显示这句话</button>
+<button type="button" id="communication-close">收起并清空</button>
+</div>
+<div id="communication-display" hidden tabindex="-1">
+<p id="communication-text"></p>
+</div>
+</section>
+<section aria-label="示例训练报告">
+<h2>示例训练报告</h2>
+<div id="reports"></div>
+<p><a class="download" id="download-report" href="/download/example-report.txt">下载示例报告</a></p>
+</section>
+</main>
+<script id="catalog-data" type="application/json">__CATALOG_JSON__</script>
+<script id="demo-script">
+(function(){
+var catalog=JSON.parse(document.getElementById('catalog-data').textContent);
+var current=null,stepIndex=0;
+var levels=document.getElementById('levels');
+var cards=document.getElementById('cards');
+var seen={};
+catalog.levels.forEach(function(level){
+var section=document.createElement('section');
+section.className='level';
+var title=document.createElement('h2');
+title.textContent=level.name;
+section.appendChild(title);
+level.lessons.forEach(function(lesson){
+var button=document.createElement('button');
+button.type='button';
+button.className='lesson';
+button.textContent=lesson.name;
+button.setAttribute('aria-label','查看课程：'+lesson.name);
+button.onclick=function(){selectLesson(lesson,button);};
+section.appendChild(button);
+if(!seen[lesson.card]){
+seen[lesson.card]=true;
+var card=document.createElement('button');
+card.type='button';
+card.textContent=lesson.card;
+card.onclick=function(){showText(lesson.card,card);};
+cards.appendChild(card);
+}
+});
+levels.appendChild(section);
+});
+catalog.reports.forEach(function(report){
+var block=document.createElement('article');
+block.className='report';
+var heading=document.createElement('h3');
+heading.textContent=report.title;
+var body=document.createElement('p');
+body.textContent=report.body;
+block.appendChild(heading);
+block.appendChild(body);
+document.getElementById('reports').appendChild(block);
+});
+function selectLesson(lesson,button){
+current=lesson;stepIndex=0;
+Array.prototype.forEach.call(document.querySelectorAll('.lesson'),function(item){
+item.removeAttribute('aria-current');
+});
+button.setAttribute('aria-current','true');
+document.getElementById('lesson-name').textContent=lesson.name;
+document.getElementById('lesson-kind').textContent=lesson.category;
+document.getElementById('lesson-intent').textContent=lesson.intent;
+document.getElementById('lesson-example').textContent=lesson.example;
+document.getElementById('lesson-boundary').textContent=lesson.boundary;
+document.getElementById('lesson-motion').textContent=lesson.motion;
+var preview=document.getElementById('preview');
+preview.hidden=!lesson.preview;
+renderStep();
+}
+function renderStep(){
+var status=document.getElementById('step-status');
+var label=document.getElementById('step-label');
+var score=document.getElementById('step-score');
+if(!current||!current.preview){
+status.textContent='这节课没有连续动作分页。';
+label.textContent='';
+document.getElementById('step-instruction').textContent='';
+score.textContent='未评分';
+return;
+}
+status.textContent='教学预览，不计成绩。第 '+(stepIndex+1)+'/'+current.steps.length+' 步。翻页不是通过。';
+label.textContent=current.steps[stepIndex];
+document.getElementById('step-instruction').textContent=current.instructions[stepIndex];
+score.textContent='未评分';
+document.getElementById('prev-step').disabled=stepIndex===0;
+document.getElementById('next-step').disabled=stepIndex===current.steps.length-1;
+}
+function move(delta){
+if(!current||!current.preview)return;
+var next=stepIndex+delta;
+if(next<0||next>=current.steps.length)return;
+stepIndex=next;
+renderStep();
+}
+document.getElementById('prev-step').onclick=function(){move(-1);};
+document.getElementById('next-step').onclick=function(){move(1);};
+document.getElementById('easy-read').onclick=function(){
+var on=document.body.classList.toggle('easy-read');
+this.setAttribute('aria-pressed',on?'true':'false');
+};
+function showText(value,opener){
+var clean=String(value||'').trim();
+var count=Array.from(clean).length;
+var display=document.getElementById('communication-display');
+var text=document.getElementById('communication-text');
+var status=document.getElementById('communication-status');
+display.hidden=true;text.textContent='';
+if(!count){status.textContent='请先选择一句话，或写下想表达的内容。';return;}
+if(count>80){status.textContent='内容超过 80 字，请缩短后再显示；尚未展示。';return;}
+text.textContent=clean;display.hidden=false;
+status.textContent='文字已显示。内容仅留在浏览器，不上传、不持久保存。';
+display._opener=opener||null;
+if(display.focus)display.focus();
+}
+document.getElementById('communication-show').onclick=function(){
+showText(document.getElementById('communication-input').value,this);
+};
+function closeText(){
+document.getElementById('communication-display').hidden=true;
+document.getElementById('communication-text').textContent='';
+document.getElementById('communication-input').value='';
+document.getElementById('communication-status').textContent='已收起并清空。内容仅留在浏览器，不上传、不持久保存。';
+var opener=document.getElementById('communication-display')._opener;
+if(opener&&opener.focus)opener.focus();
+}
+document.getElementById('communication-close').onclick=closeText;
+document.addEventListener('keydown',function(event){
+if(event.key==='Escape')closeText();
+if(!current||!current.preview)return;
+if(event.target&&(event.target.tagName==='TEXTAREA'||event.target.tagName==='INPUT'))return;
+if(event.key==='ArrowRight'){event.preventDefault();move(1);}
+if(event.key==='ArrowLeft'){event.preventDefault();move(-1);}
+});
+})();
+</script>
+</body>
+</html>

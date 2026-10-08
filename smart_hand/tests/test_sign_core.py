@@ -164,6 +164,19 @@ class GestureClassifierTests(unittest.TestCase):
 
 
 class SignLessonControllerTests(unittest.TestCase):
+    def test_l_course_metadata_does_not_claim_fingerspelling_instruction(self):
+        lesson = lesson_catalog()["basic_l_shape"]
+        self.assertEqual(lesson["name_zh"], "L 形基础手型原型")
+        self.assertEqual(lesson["chinese_name"], lesson["name_zh"])
+        self.assertNotIn("手指字母", lesson["name_zh"])
+        self.assertIn("不认证手指字母或拼读能力", lesson["mechanical_semantics"])
+        self.assertEqual(lesson["prototype_id"], "L_SHAPE")
+        self.assertEqual(lesson["confidence_threshold"], 0.64)
+        self.assertEqual(lesson["required_hold_ms"], 300)
+        self.assertEqual(lesson["demo_mode"], "screen_only")
+        self.assertIsNone(lesson["mechanical_pose"])
+        self.assertEqual(lesson["mechanical_sequence_id"], 6)
+
     def test_default_lessons_are_prototypes_without_unverified_servo_pose(self):
         catalog = lesson_catalog()
         self.assertEqual(catalog["basic_open_palm"]["demo_mode"], "screen_only")

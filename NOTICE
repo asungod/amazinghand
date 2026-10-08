@@ -1,0 +1,5 @@
+知手同行
+
+本项目自行编写的软件代码采用 Apache License 2.0。
+机械平台来源于 Pollen Robotics AmazingHand，视觉框架来源于 Sipeed MaixPy/MaixCDK，控制环境采用 RT-Thread 与 Renesas FSP。
+第三方组件与机械设计保留各自的版权、许可和署名要求，来源见 THIRD_PARTY_NOTICES.md。

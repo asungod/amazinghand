@@ -32,6 +32,8 @@ def observation(phase):
         evidence.update(finger_extension=[0.95]*4, thumb_extension=0.8, thumb_angle_deg=170)
     elif phase == "thumb_in":
         evidence.update(finger_extension=[0.95]*4, thumb_inside=True)
+    elif phase == "help_close":
+        evidence.update(thumb_inside=True)
     return result
 
 
@@ -44,14 +46,87 @@ def hold(tracker, result, now):
 
 
 class SignSequenceTests(unittest.TestCase):
-    def test_all_six_sequences_complete_in_order(self):
+    def help_final_tracker(self):
+        tracker = SignSequenceTracker("signal_help")
+        now = hold(tracker, observation("palm_open"), 0)
+        now = hold(tracker, observation("thumb_in"), now)
+        self.assertEqual(tracker.index, 2)
+        return tracker, now
+
+    def test_hidden_thumb_never_automatically_passes_even_with_favourable_label(self):
+        for label in ("FIST", "THUMBS_UP", "UNKNOWN", "OPEN_PALM"):
+            with self.subTest(label=label):
+                tracker, now = self.help_final_tracker()
+                result = observation("help_close")
+                result["gesture_id"] = label
+                hold(tracker, result, now)
+                self.assertFalse(tracker.snapshot()["complete"])
+                self.assertEqual(tracker.index, 2)
+                self.assertIn("人工复核", tracker.snapshot()["instruction"])
+
+    def test_help_close_rejects_open_fingers_or_thumb_outside_or_far(self):
+        for field, value in (("finger_extension", [0.95]*4),
+                             ("finger_extension", [0.2, 0.2, 0.7, 0.2]),
+                             ("thumb_inside", False), ("thumb_tip_distance", 1.16)):
+            with self.subTest(field=field, value=value):
+                tracker, now = self.help_final_tracker()
+                result = observation("help_close")
+                result.update(gesture_id="FIST", confidence=.99, valid=True, error_code="OK")
+                result["motion_evidence"][field] = value
+                hold(tracker, result, now)
+                self.assertEqual(tracker.index, 2)
+                self.assertFalse(tracker.snapshot()["complete"])
+
+    def test_help_close_requires_continuous_hold_and_live_geometry(self):
+        tracker, now = self.help_final_tracker()
+        result = observation("help_close")
+        tracker.observe(result, now)
+        tracker.observe(result, now+299)
+        self.assertEqual(tracker.index, 2)
+        tracker.observe({"error_code": "NO_HAND"}, now+300)
+        tracker.observe(result, now+400)
+        tracker.observe(result, now+699)
+        self.assertEqual(tracker.index, 2)
+        tracker.observe(result, now+700)
+        self.assertFalse(tracker.snapshot()["complete"])
+        tracker, now = self.help_final_tracker()
+        tracker.observe({"gesture_id": "FIST", "valid": True, "error_code": "OK"}, now)
+        self.assertEqual(tracker.index, 0)
+
+    def test_help_compact_thumb_can_be_mislabeled_by_real_static_rules(self):
+        points = palm_shape((True,)*4)
+        points[1:5] = [(0, .2), (0, .35), (0, .5), (0, .65)]
+        result = dict(classify_gesture(points))
+        result["motion_evidence"] = motion_evidence(points)
+        self.assertEqual(result["gesture_id"], "THUMBS_UP")
+        tracker, now = self.help_final_tracker()
+        hold(tracker, result, now)
+        self.assertFalse(tracker.snapshot()["complete"])
+
+    def test_help_controller_records_review_separately_from_automatic_pass(self):
+        controller, now = self.controller("signal_help"), 0
+        for phase in ("palm_open", "thumb_in", "help_close"):
+            result = observation(phase)
+            if phase == "help_close":
+                result.update(gesture_id="THUMBS_UP", confidence=.95, valid=True, error_code="OK")
+            for delta in (0, 150, 320):
+                controller.observe(result, now+delta)
+            now += 400
+        self.assertEqual(controller.state, "IMITATING")
+        result = controller.review_manual(now, True, controller.session_token)
+        self.assertEqual(result["state"], "REVIEWED")
+        self.assertEqual(result["error_code"], "MANUAL_REVIEW")
+        self.assertEqual(result["motion_progress"]["completed_steps"], 2)
+        self.assertFalse(result["motion_progress"]["complete"])
+
+    def test_five_automatic_sequences_complete_help_requires_review(self):
         for lesson, phases in SEQUENCES.items():
             with self.subTest(lesson=lesson):
                 tracker, now = SignSequenceTracker(lesson), 0
                 for index, (phase, _) in enumerate(phases):
                     now = hold(tracker, observation(phase), now)
-                    self.assertEqual(tracker.index, index+1)
-                self.assertTrue(tracker.snapshot()["complete"])
+                    self.assertEqual(tracker.index, min(index+1, 2) if lesson == "signal_help" else index+1)
+                self.assertEqual(tracker.snapshot()["complete"], lesson != "signal_help")
 
     def test_final_shape_alone_never_completes_any_dynamic_lesson(self):
         for lesson, phases in SEQUENCES.items():
@@ -102,17 +177,20 @@ class SignSequenceTests(unittest.TestCase):
             hold(tracker, observation("thumb_bend"), 500)
             self.assertEqual(tracker.index, 0)
 
-    def test_long_gap_and_phase_timeout_reset_progress(self):
+    def test_long_gap_preserves_steps_but_does_not_earn_hold(self):
         for gap in (2001, 3000):
             tracker = SignSequenceTracker("word_thanks")
             hold(tracker, observation("thumb_open"), 0)
             tracker.observe(observation("thumb_bend"), 320+gap)
-            self.assertEqual(tracker.index, 0)
+            self.assertEqual(tracker.index, 1)
+            self.assertEqual(tracker.hold_ms, 0)
+            tracker.observe(observation("thumb_bend"), 620+gap)
+            self.assertEqual(tracker.index, 2)
         tracker = SignSequenceTracker("word_thanks")
         hold(tracker, observation("thumb_open"), 0)
         for now in range(400, 16000, 100):
             tracker.observe(observation("thumb_open"), now)
-        self.assertLessEqual(tracker.index, 1)
+        self.assertEqual(tracker.index, 1)
 
     def test_jitter_and_duplicate_timestamp_never_advance(self):
         tracker = SignSequenceTracker("word_thanks")
@@ -189,7 +267,7 @@ class SignSequenceTests(unittest.TestCase):
         self.assertEqual(controller.tick(controller.dynamic_timeout_ms)["state"], "TIMEOUT")
 
     def test_brief_loss_preserves_steps_but_restarts_current_hold(self):
-        for bad in (None, {}, {"error_code": "NO_HAND"}):
+        for bad in (None, {}, {"error_code": "NO_HAND"}, {"error_code": "hand_not_found"}):
             tracker = SignSequenceTracker("word_thanks")
             hold(tracker, observation("thumb_open"), 0)
             tracker.observe(observation("thumb_bend"), 400)
@@ -201,13 +279,36 @@ class SignSequenceTests(unittest.TestCase):
             tracker.observe(observation("thumb_bend"), 1100)
             self.assertEqual(tracker.index, 2)
 
-    def test_repeated_missing_frames_cannot_extend_grace_or_complete(self):
-        tracker = SignSequenceTracker("word_thanks")
-        hold(tracker, observation("thumb_open"), 0)
-        for now in range(400, 2500, 100):
-            self.assertFalse(tracker.observe({"error_code": "NO_HAND"}, now))
-        self.assertEqual(tracker.index, 0)
-        self.assertEqual(tracker.count, 0)
+    def test_repeated_missing_frames_preserve_steps_but_cannot_complete(self):
+        for error in ("NO_HAND", "hand_not_found"):
+            tracker = SignSequenceTracker("word_thanks")
+            hold(tracker, observation("thumb_open"), 0)
+            for now in range(400, 20000, 100):
+                self.assertFalse(tracker.observe({"error_code": error}, now))
+            self.assertEqual(tracker.index, 1)
+            self.assertEqual(tracker.count, 0)
+            self.assertEqual(tracker.hold_ms, 0)
+            self.assertFalse(tracker.snapshot()["complete"])
+
+    def test_help_transition_preserves_confirmed_steps_but_earns_no_hold(self):
+        tracker, now = self.help_final_tracker()
+        tracker.observe(observation("help_close"), now)
+        tracker.observe({"error_code": "hand_not_found", "valid": False,
+                         "gesture_id": None, "stable_ms": 0}, now+150)
+        self.assertEqual(tracker.index, 2)
+        self.assertEqual(tracker.hold_ms, 0)
+        self.assertEqual(tracker.snapshot()["checks"], [])
+        self.assertEqual(tracker.snapshot()["observation_state"], "MISSING")
+        transition = observation("thumb_in")
+        self.assertEqual(transition["gesture_id"], "UNKNOWN")
+        tracker.observe(transition, now+300)
+        self.assertEqual(tracker.index, 2)
+        self.assertEqual(tracker.hold_ms, 0)
+        tracker.observe(observation("help_close"), now+450)
+        tracker.observe(observation("help_close"), now+749)
+        self.assertFalse(tracker.snapshot()["complete"])
+        tracker.observe(observation("help_close"), now+750)
+        self.assertFalse(tracker.snapshot()["complete"])
 
     def test_all_sequences_can_resume_after_short_interstage_loss(self):
         for lesson, phases in SEQUENCES.items():
@@ -218,16 +319,47 @@ class SignSequenceTests(unittest.TestCase):
                     self.assertEqual(tracker.index, index)
                     now += 400
                 now = hold(tracker, observation(phase), now)
-                self.assertEqual(tracker.index, index+1)
-            self.assertTrue(tracker.snapshot()["complete"])
+                self.assertEqual(tracker.index, min(index+1, 2) if lesson == "signal_help" else index+1)
+            self.assertEqual(tracker.snapshot()["complete"], lesson != "signal_help")
 
-    def test_phase_deadline_uses_completed_phase_not_every_usable_frame(self):
+    def test_waiting_for_next_phase_does_not_erase_confirmed_steps(self):
         tracker = SignSequenceTracker("word_thanks")
         hold(tracker, observation("thumb_open"), 0)
         for now in range(400, 15501, 200):
             tracker.observe(observation("thumb_open"), now)
-        self.assertEqual(tracker.index, 0)
-        self.assertIn("重来", tracker.snapshot()["feedback"])
+        self.assertEqual(tracker.index, 1)
+        self.assertEqual(tracker.hold_ms, 0)
+        hold(tracker, observation("thumb_bend"), 16000)
+        self.assertEqual(tracker.index, 2)
+
+    def test_help_controller_preserves_steps_for_review_after_pause(self):
+        controller = self.controller("signal_help")
+        for phase, start in (("palm_open", 0), ("thumb_in", 400)):
+            for delta in (0, 150, 320):
+                controller.observe(observation(phase), start+delta)
+        controller.observe(observation("help_close"), 800)
+        for now in (1000, 5000, 15000, 25000):
+            controller.observe({"error_code": "hand_not_found"}, now)
+            self.assertEqual(controller.state, "IMITATING")
+            self.assertEqual(controller.status()["motion_progress"]["completed_steps"], 2)
+            self.assertEqual(controller.status()["motion_progress"]["phase_hold_ms"], 0)
+        controller.observe(observation("help_close"), 30000)
+        controller.observe(observation("help_close"), 30299)
+        self.assertEqual(controller.state, "IMITATING")
+        controller.observe(observation("help_close"), 30300)
+        self.assertEqual(controller.state, "IMITATING")
+        self.assertEqual(controller.review_manual(30301, True, controller.session_token)["state"], "REVIEWED")
+
+    def test_paused_help_cannot_bypass_overall_deadline(self):
+        controller = self.controller("signal_help")
+        for phase, start in (("palm_open", 0), ("thumb_in", 400)):
+            for delta in (0, 320):
+                controller.observe(observation(phase), start+delta)
+        for now in (1000, 5000, 25000, 59999):
+            controller.observe({"error_code": "hand_not_found"}, now)
+        status = controller.observe(observation("help_close"), 60000)
+        self.assertEqual(status["state"], "TIMEOUT")
+        self.assertFalse(status["motion_progress"]["complete"])
 
     def test_sparse_samples_do_not_earn_continuous_hold(self):
         tracker = SignSequenceTracker("word_thanks")

@@ -257,6 +257,7 @@ OVERLAY_TOKEN_TRANSLATIONS = {
     "NONE": "无",
     "USER": "用户",
     "COMPLETE": "完成",
+    "REVIEWED": "人工复核已记录（非自动通过）",
     "TIMEOUT": "超时",
     "IMITATE": "模仿",
     "RESULT": "结果",
@@ -369,6 +370,13 @@ def target_status_lines(payload):
         "TARGET {} {}%".format(label, confidence),
         "INTENT {}".format(intent),
     )
+
+
+def sign_overlay_lines(recognition, state):
+    """Presentation-only compact caption; evidence stays in the web metrics."""
+    recognition = recognition or {}
+    gesture = recognition.get("gesture_id") or "NONE"
+    return "SIGN {}".format(gesture), "SIGN STATE {}".format(state or "UNAVAILABLE")
 
 
 def draw_overlay_text(frame, image_module, x, y, text):
@@ -801,7 +809,7 @@ def sign_status_snapshot(
     if not isinstance(state, str) or not state:
         state = "unavailable" if controller is None else "idle"
     status["state"] = state
-    if state.upper() not in ("FAULT", "TIMEOUT", "CANCELLED"):
+    if state.upper() not in ("FAULT", "TIMEOUT", "CANCELLED", "REVIEWED"):
         if recognition is not None and recognition.get("error_code") is not None:
             status["error_code"] = recognition.get("error_code")
     if "lesson_id" not in status:
@@ -1187,6 +1195,31 @@ def consume_sign_intent(
         if callable(applied):
             applied(request_id, "started")
         return True
+    if action == "review":
+        # Teaching-only outcome: no send_frame, no UART ACK completion and no
+        # mechanical start/cancel/home. Bind the review to the selected run.
+        status = _sign_controller_status(sign_controller)
+        if (command.get("manual_confirm") is not True or
+                command.get("lesson_id") != status.get("lesson_id") or
+                type(command.get("session_token")) is not int or
+                command.get("session_token") != status.get("session_token") or
+                status.get("state") != "IMITATING" or status.get("can_review") is not True):
+            return fail("review_not_allowed")
+        last_status_ms = authority.get("last_status_ms")
+        snapshot = authority.get("snapshot") or {}
+        if (snapshot.get("link_online") is not True or type(last_status_ms) is not int or
+                elapsed_ms(now_ms, last_status_ms) >= SIGN_STALE_TIMEOUT_MS):
+            return fail("link_offline")
+        if _sign_mechanical_enabled_for(sign_controller, sign_motion_controller):
+            if sign_motion_controller.status().get("state") != SIGN_MOTION_COMPLETED:
+                return fail("mechanical_incomplete")
+        ok, reason, _raw = _sign_call(sign_controller, ("review_manual",),
+                                    now_ms, True, command["session_token"])
+        if not ok:
+            return fail(reason or "review_not_allowed")
+        if callable(applied):
+            applied(request_id, "manual_review_recorded")
+        return True
     if action == "cancel":
         mechanical = _sign_mechanical_enabled_for(
             sign_controller, sign_motion_controller
@@ -1325,7 +1358,7 @@ def _sign_terminal(controller):
         return True
     state = str(status.get("state", "")).lower()
     return state.upper() in (
-        "COMPLETE", "COMPLETED", "TIMEOUT", "CANCELLED", "FAILED", "FAULT"
+        "COMPLETE", "COMPLETED", "REVIEWED", "TIMEOUT", "CANCELLED", "FAILED", "FAULT"
     )
 
 
@@ -1422,7 +1455,7 @@ def tick_sign_controller(
             # this branch covers a Titan-side cancellation/link-loss report.
             status = _sign_controller_status(controller)
             if str(status.get("state", "")).upper() not in (
-                "CANCELLED", "COMPLETE", "FAULT", "TIMEOUT"
+                "CANCELLED", "COMPLETE", "REVIEWED", "FAULT", "TIMEOUT"
             ):
                 cancel = getattr(controller, "cancel", None)
                 if callable(cancel):
@@ -1920,30 +1953,9 @@ def main():
                     frame = hand_source.last_frame
                     hand_source.draw_hand(frame)
                     recognition = sign_recognition or {}
-                    gesture_id = recognition.get("gesture_id")
-                    confidence = recognition.get("confidence", 0.0)
-                    stable_ms = recognition.get("stable_ms", 0)
-                    valid = recognition.get("valid") is True
-                    error_code = recognition.get("error_code")
-                    confidence_text = (
-                        "{:.2f}".format(confidence)
-                        if isinstance(confidence, (int, float))
-                        else "0.00"
-                    )
-                    overlay_lines = (
-                        "SIGN {} {}".format(
-                            gesture_id if gesture_id is not None else "NONE",
-                            confidence_text,
-                        ),
-                        "STABLE {}ms {}".format(
-                            stable_ms if isinstance(stable_ms, int) else 0,
-                            "VALID" if valid else (error_code or "UNKNOWN"),
-                        ),
-                        "SIGN STATE {}".format(
-                            _sign_controller_status(sign_controller).get(
-                                "state", "UNAVAILABLE"
-                            )
-                        ),
+                    overlay_lines = sign_overlay_lines(
+                        recognition,
+                        _sign_controller_status(sign_controller).get("state"),
                     )
                     for line_index, line in enumerate(overlay_lines):
                         draw_overlay_text(

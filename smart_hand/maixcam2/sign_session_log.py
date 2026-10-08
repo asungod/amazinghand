@@ -2,12 +2,12 @@
 
 The file produced here is intentionally separate from the legacy
 ``smart_hand_rehab_sessions.csv`` format.  A row is written only after a
-terminal sign lesson state (COMPLETE, TIMEOUT, CANCELLED, or FAULT), and
+terminal sign lesson state (COMPLETE, REVIEWED, TIMEOUT, CANCELLED, or FAULT), and
 logging errors do not get to authorize hardware actions.
 """
 
 DEFAULT_PATH = "smart_hand_sign_sessions.csv"
-TERMINAL_STATES = ("COMPLETE", "TIMEOUT", "CANCELLED", "FAULT")
+TERMINAL_STATES = ("COMPLETE", "REVIEWED", "TIMEOUT", "CANCELLED", "FAULT")
 CSV_COLUMNS = (
     "schema",
     "session",

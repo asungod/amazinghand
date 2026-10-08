@@ -21,6 +21,7 @@ STATE_DEMO_READY = "DEMO_READY"
 STATE_DEMONSTRATING = "DEMONSTRATING"
 STATE_IMITATING = "IMITATING"
 STATE_COMPLETE = "COMPLETE"
+STATE_REVIEWED = "REVIEWED"
 STATE_TIMEOUT = "TIMEOUT"
 STATE_CANCELLED = "CANCELLED"
 STATE_FAULT = "FAULT"
@@ -33,6 +34,7 @@ DEMO_READY = STATE_DEMO_READY
 DEMONSTRATING = STATE_DEMONSTRATING
 IMITATING = STATE_IMITATING
 COMPLETE = STATE_COMPLETE
+REVIEWED = STATE_REVIEWED
 TIMEOUT = STATE_TIMEOUT
 CANCELLED = STATE_CANCELLED
 FAULT = STATE_FAULT
@@ -44,11 +46,12 @@ STATES = (
     STATE_DEMONSTRATING,
     STATE_IMITATING,
     STATE_COMPLETE,
+    STATE_REVIEWED,
     STATE_TIMEOUT,
     STATE_CANCELLED,
     STATE_FAULT,
 )
-TERMINAL_STATES = (STATE_COMPLETE, STATE_TIMEOUT, STATE_CANCELLED, STATE_FAULT)
+TERMINAL_STATES = (STATE_COMPLETE, STATE_REVIEWED, STATE_TIMEOUT, STATE_CANCELLED, STATE_FAULT)
 
 ERROR_OK = "OK"
 ERROR_NO_LESSON = "NO_LESSON"
@@ -203,7 +206,7 @@ DEFAULT_LESSONS = {
     ),
     "basic_l_shape": _lesson(
         "basic_l_shape",
-        "L 形手指字母基础手型",
+        "L 形基础手型原型",
         "L_SHAPE",
         "screen_only",
         None,
@@ -213,7 +216,7 @@ DEFAULT_LESSONS = {
         mechanical_motion_status="READY_FOR_BENCH_VALIDATION",
         mechanical_semantics=(
             "食指与拇指伸展成 L 形，其余机械手指收拢；"
-            "用于手指字母及拼读训练的基础手型辅助展示"
+            "仅用于 L 形基础手型辅助展示，不认证手指字母或拼读能力"
         ),
     ),
     "basic_ok_pinch": _lesson(
@@ -726,6 +729,29 @@ class SignLessonController:
         self._match_since_ms = None
         return self.status()
 
+    def review_manual(self, now_ms=None, manual_confirm=False, session_token=None):
+        """Record the operator's review, never an automatic or actuator pass."""
+        now_ms = self._clock(now_ms)
+        if (manual_confirm is not True or type(session_token) is not int or
+                session_token != self.session_token or self._sequence is None or
+                self.state != STATE_IMITATING):
+            result = self.status()
+            result.update(ok=False, reason="review_not_allowed")
+            return result
+        if self._deadline_ms is not None and now_ms >= self._deadline_ms:
+            self.tick(now_ms)
+            result = self.status()
+            result.update(ok=False, reason="review_expired")
+            return result
+        self._transition(STATE_REVIEWED, "MANUAL_REVIEW")
+        self.completed_ms = now_ms
+        self._sequence._clear_hold()
+        self._sequence.checks = []
+        self._match_since_ms = None
+        result = self.status()
+        result["ok"] = True
+        return result
+
     def fault(self, error_code=ERROR_EXTERNAL_FAULT, now_ms=None):
         now_ms = self._clock(now_ms)
         if self.state in TERMINAL_STATES:
@@ -807,6 +833,7 @@ class SignLessonController:
             "manual_confirmed": self.manual_confirmed,
             "session_token": self.session_token,
             "action_allowed": self.action_allowed,
+            "can_review": self.state == STATE_IMITATING and self._sequence is not None,
         }
         if self._sequence is not None:
             data["motion_progress"] = self._sequence.snapshot()

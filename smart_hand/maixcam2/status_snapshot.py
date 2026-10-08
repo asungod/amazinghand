@@ -294,4 +294,3 @@ def aitrust_status_line(snapshot):
         AITRUST_CLASS_NAMES.get(snapshot["class_id"], "?"),
         snapshot["vision_age_ms"],
     )
-
